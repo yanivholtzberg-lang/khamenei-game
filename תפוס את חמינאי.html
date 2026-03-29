@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>מבצע חמינאי 🚀</title>
+    <style>
+        html, body { position: fixed; overflow: hidden; width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; margin: 0; background: #000; color: white; font-family: 'Segoe UI', Arial; }
+        #game-container { position: relative; width: 100vw; height: 100vh; background: #000; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; background: linear-gradient(to bottom, #1e90ff 0%, #87ceeb 100%); }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; }
+        #ui { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 10; pointer-events: none; }
+        .score-box { background: rgba(0,0,0,0.6); padding: 6px 15px; border-radius: 20px; border: 2px solid white; display: inline-block; }
+        #turban-icons { font-size: 20px; letter-spacing: 2px; margin-top: 3px; }
+        .btn { padding: 15px 40px; font-size: 22px; cursor: pointer; background: #2ecc71; color: white; border: none; border-radius: 50px; font-weight: bold; margin-top: 15px; }
+        #fire-btn { position: absolute; bottom: 30px; left: 30px; width: 85px; height: 85px; background: rgba(255,0,0,0.7); border-radius: 50%; border: 4px solid white; z-index: 1000; display: none; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="start-screen" class="overlay">
+        <h1 style="font-size: 40px; margin:0;">מבצע חמינאי 🚀</h1>
+        <button class="btn" id="start-btn">המראה! 🎶</button>
+    </div>
+
+    <div id="win-screen" class="overlay" style="display:none;">
+        <h1 style="font-size: 50px; margin:0;">עם ישראל חי! 🇮🇱</h1>
+        <button class="btn" style="background: #0038b8;" onclick="location.reload()">שוב פעם 🔄</button>
+    </div>
+
+    <div id="ui">
+        <div class="score-box">
+            <div style="font-size: 18px;">חוסלו: <span id="scoreText">0</span> / 10</div>
+            <div id="turban-icons"></div>
+        </div>
+    </div>
+    
+    <div id="fire-btn">אש! 🔥</div>
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let w, h, gameActive = false, score = 0, frameCount = 0;
+let keys = {};
+
+// וודא שזה ה-Web App URL המעודכן שלך מגוגל (מסיים ב-/exec)
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw0IMqSOGgIKRmiYOhsOcNDpwXsyqIjHsxX2mrpknhBn9mTt3PeH035EwU70bEhSZpMNA/exec"; 
+
+function sendToSheets() {
+    if (!SCRIPT_URL) return;
+    // שימוש בשיטת "תמונה" (Beacon) לעקיפת חסימות דפדפנים פנימיים
+    const img = new Image();
+    img.src = SCRIPT_URL + "?t=" + Date.now();
+}
+
+let audioCtx;
+function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+const NOTES = { 'E4': 329.63, 'F4': 349.23, 'G4#': 415.30, 'A4': 440.00, 'B4': 493.88, 'C5': 523.25, 'D5': 587.33 };
+const HAVA_NAGILA = [['E4', 0.5], ['E4', 0.5], ['G4#', 1], ['E4', 1], ['E4', 0.5], ['E4', 0.5], ['G4#', 1], ['E4', 1], ['E4', 0.5], ['F4', 0.5], ['G4#', 0.5], ['A4', 0.5], ['B4', 1], ['A4', 1], ['G4#', 0.5], ['F4', 0.5], ['E4', 1]];
+
+function playNote(freq, duration, startTime) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+    osc.type = 'square'; osc.frequency.setValueAtTime(freq, startTime);
+    gain.gain.setValueAtTime(0.02, startTime); gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(startTime); osc.stop(startTime + duration);
+}
+
+function startMusicLoop() {
+    if (!gameActive) return;
+    let curr = audioCtx.currentTime;
+    HAVA_NAGILA.forEach(n => { playNote(NOTES[n[0]], n[1]*0.4, curr); curr += n[1]*0.4; });
+    setTimeout(() => { if(gameActive) startMusicLoop(); }, (curr - audioCtx.currentTime)*1000);
+}
+
+function speakInstant(text, lang) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = lang;
+    window.speechSynthesis.speak(msg);
+}
+
+const SCALE = 0.56; 
+let plane = { x: 50, y: 200, w: 150 * SCALE, h: 50 * SCALE };
+let khamenei = { x: 100, y: 0, w: 80 * SCALE, h: 80 * SCALE, dir: 1, speed: 5 * SCALE, hidden: false, respawnTimer: 0 };
+let bombs = [], missiles = [], usaPlanes = [], usaMissiles = [], particles = [];
+
+function resize() { 
+    w = window.innerWidth; h = window.innerHeight; 
+    canvas.width = w; canvas.height = h; 
+    khamenei.y = h - 120;
+}
+window.addEventListener('resize', resize); resize();
+
+function startGame() {
+    initAudio();
+    gameActive = true; 
+    document.getElementById('start-screen').style.display = 'none';
+    if ('ontouchstart' in window) document.getElementById('fire-btn').style.display = 'flex';
+    document.getElementById('turban-icons').innerText = "👳‍♂️".repeat(10);
+    sendToSheets(); 
+    startMusicLoop();
+    requestAnimationFrame(loop);
+}
+document.getElementById('start-btn').addEventListener('click', startGame);
+
+function drawF16(x, y) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(SCALE, SCALE);
+    ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.moveTo(-10, 25); ctx.lineTo(-25 - Math.random()*20, 25); ctx.lineTo(-10, 32); ctx.fill();
+    ctx.fillStyle = '#95a5a6'; ctx.beginPath(); ctx.moveTo(10, 25); ctx.lineTo(140, 25); ctx.lineTo(130, 35); ctx.lineTo(20, 35); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#7f8c8d'; ctx.beginPath(); ctx.moveTo(50, 25); ctx.lineTo(30, 5); ctx.lineTo(80, 25); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(50, 35); ctx.lineTo(30, 55); ctx.lineTo(80, 35); ctx.fill();
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.7)'; ctx.beginPath(); ctx.ellipse(100, 24, 20, 8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#0038b8'; ctx.lineWidth = 2; ctx.strokeText("✡", 55, 22); ctx.restore();
+}
+
+function drawUSAPlane(u) {
+    ctx.save(); ctx.translate(u.x, u.y); ctx.scale(SCALE, SCALE);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(10, 15); ctx.lineTo(120, 15); ctx.lineTo(110, 25); ctx.lineTo(15, 25); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.moveTo(40, 15); ctx.lineTo(20, -5); ctx.lineTo(70, 15); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(40, 25); ctx.lineTo(20, 45); ctx.lineTo(70, 25); ctx.fill();
+    ctx.fillStyle = '#e74c3c'; ctx.font = "bold 14px Arial"; ctx.fillText("★ USA", 40, 21); ctx.restore();
+}
+
+function loop() {
+    if (!gameActive) return;
+    ctx.clearRect(0, 0, w, h); frameCount++;
+
+    if (keys['ArrowUp']) plane.y = Math.max(0, plane.y - 7);
+    if (keys['ArrowDown']) plane.y = Math.min(h-plane.h, plane.y + 7);
+    if (keys['ArrowLeft']) plane.x = Math.max(0, plane.x - 7);
+    if (keys['ArrowRight']) plane.x = Math.min(w-plane.w, plane.x + 7);
+
+    ctx.fillStyle = '#e2bc7a'; ctx.fillRect(0, h-30, w, 30);
+    drawF16(plane.x, plane.y);
+
+    if (!khamenei.hidden) {
+        khamenei.x += khamenei.dir * khamenei.speed;
+        if (khamenei.x <= 30 || khamenei.x >= w - khamenei.w - 30) khamenei.dir *= -1;
+        ctx.save(); ctx.translate(khamenei.x, khamenei.y); ctx.scale(SCALE, SCALE);
+        ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 80, 80); ctx.fillStyle = '#ffdbac'; ctx.fillRect(20, -35, 40, 40);
+        ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(40, -35, 25, 0, Math.PI, true); ctx.fill();
+        ctx.strokeStyle = "black"; ctx.lineWidth = 4; let wave = Math.sin(frameCount*0.3)*20;
+        ctx.beginPath(); ctx.moveTo(0, 15); ctx.lineTo(-20, -20+wave); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(80, 15); ctx.lineTo(100, -20+wave); ctx.stroke(); ctx.restore();
+    } else {
+        khamenei.respawnTimer++;
+        if (khamenei.respawnTimer > 300) { khamenei.hidden = false; khamenei.respawnTimer = 0; }
+    }
+
+    if(frameCount % 1200 === 0) usaPlanes.push({x: w + 150, y: 50, spoken: false});
+    usaPlanes.forEach((u, i) => {
+        if (!u.spoken) { u.spoken = true; speakInstant("USA", "en-US"); }
+        u.x -= 2.2; drawUSAPlane(u);
+        if(missiles.length > 0 && frameCount % 20 === 0) usaMissiles.push({x: u.x, y: u.y, vx: -5, vy: 5});
+        if(u.x < -150) usaPlanes.splice(i, 1);
+    });
+
+    usaMissiles.forEach((um, i) => {
+        um.x += um.vx; um.y += um.vy; ctx.fillStyle='#00f2fe'; ctx.beginPath(); ctx.arc(um.x, um.y, 4, 0, Math.PI*2); ctx.fill();
+        missiles.forEach((m, j) => { if(Math.hypot(um.x - m.x, um.y - m.y) < 40) { missiles.splice(j, 1); usaMissiles.splice(i, 1); } });
+    });
+
+    if(Math.random() < 0.02) missiles.push({ x: w - 40, y: h - 90, vx: -4 - Math.random()*2, vy: -2 - Math.random()*2 });
+    missiles.forEach((m, i) => {
+        m.x += m.vx; m.y += m.vy; ctx.save(); ctx.translate(m.x, m.y); ctx.scale(SCALE, SCALE);
+        let ang = Math.atan2(m.vy, m.vx); ctx.rotate(ang);
+        ctx.fillStyle = '#7f8c8d'; ctx.fillRect(-20, -7, 30, 14);
+        ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.moveTo(10, -7); ctx.lineTo(25, 0); ctx.lineTo(10, 7); ctx.fill(); ctx.restore();
+        if(Math.hypot(m.x - (plane.x+plane.w/2), m.y - (plane.y+plane.h/2)) < 35) { missiles.splice(i, 1); plane.x -= 20; }
+        if(m.x < -50 || m.y < -50) missiles.splice(i, 1);
+    });
+
+    bombs.forEach((b, i) => {
+        b.y += 12; ctx.fillStyle = '#333'; ctx.fillRect(b.x, b.y, 5, 15);
+        if (!khamenei.hidden && b.x > khamenei.x && b.x < khamenei.x+khamenei.w && b.y > khamenei.y) {
+            score++; khamenei.hidden = true; bombs.splice(i, 1); 
+            document.getElementById('scoreText').innerText = score;
+            document.getElementById('turban-icons').innerText = "👳‍♂️".repeat(Math.max(0, 10 - score));
+            for (let j = 0; j < 15; j++) particles.push({ x: khamenei.x + 40, y: khamenei.y + 40, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10-4, size: Math.random()*5+2, color: Math.random()>0.3?'#222':'#e74c3c', life: 1 });
+            speakInstant("עם ישראל חי", "he-IL");
+        }
+        if (b.y > h) bombs.splice(i, 1);
+    });
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.3; p.life -= 0.03;
+        if (p.life <= 0) particles.splice(i, 1); else { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.globalAlpha = 1; }
+    }
+
+    if (score >= 10) { gameActive = false; document.getElementById('win-screen').style.display = 'flex'; }
+    else requestAnimationFrame(loop);
+}
+
+window.addEventListener('keydown', e => { keys[e.code] = true; if(e.code === 'Space') bombs.push({ x: plane.x + plane.w/2, y: plane.y + plane.h }); });
+window.addEventListener('keyup', e => keys[e.code] = false);
+window.addEventListener('touchmove', (e) => { if (!gameActive) return; e.preventDefault(); const touch = e.touches[0]; plane.x = touch.clientX - plane.w/2; plane.y = touch.clientY - plane.h/2; }, {passive: false});
+document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); bombs.push({ x: plane.x + plane.w/2, y: plane.y + plane.h }); });
+</script>
+</body>
+</html>
